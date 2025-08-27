@@ -12,7 +12,7 @@ log/**/*.png
 
 *.zip
 .venv
-*.txt
+
 *.pt
 
 
