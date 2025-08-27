@@ -14,7 +14,7 @@ def sample(
 	alpha_mask: str = "1",
 	save_attn: bool = False,
 	use_attn_bias: bool = True,
-	filename_prefix: Optional[str] = None,
+	filename_prefix: Optional[str] = "",
 ):
 	eval.set_output_dir(output_dir)
 
@@ -37,7 +37,7 @@ def parse_args():
 	parser = argparse.ArgumentParser()
 
 	parser.add_argument("--CUDA_VISIBLE_DEVICES", type=str, default="0")
-	parser.add_argument('--control', type=str, required=True, help="depth | pose | canny | ...")
+	parser.add_argument('--control', type=str, default="depth", help="depth | pose | canny | ...")
 	parser.add_argument('--model', type=str, default="SemanticControl", help="ControlNet | SemanticControl")
 	parser.add_argument('--alpha_mask', nargs="*", type=float, default=[1], help="Mask applied on inferred alpha. [1, 0, 0, 0] means only upper left is used with 1.")
 	parser.add_argument('--save_attn', action='store_true', default=False)

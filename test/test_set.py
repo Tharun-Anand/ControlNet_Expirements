@@ -2,7 +2,7 @@ from typing import Dict, List
 
 from .types import SemanticControlArgs
 
-seeds = [42]
+seeds = [1]
 
 subjects = ["a dog plushie"]
 
