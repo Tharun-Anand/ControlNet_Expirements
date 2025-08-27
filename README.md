@@ -6,3 +6,7 @@
 
 1. Use the command `pip install -r requirements.txt` to install all dependencies
 2. Run `python3 sample.py`. <br> Refer to the file for any helps related to CLI arguments.
+
+
+### Acknowledgment
+This code is based on the work of [SmartControl](https://github.com/liuxiaoyu1104/SmartControl)
