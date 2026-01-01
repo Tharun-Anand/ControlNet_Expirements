@@ -11,7 +11,6 @@ from diffusers.utils import (USE_PEFT_BACKEND, BaseOutput, deprecate,
 # from ..utils import is_torch_version, logging
 from diffusers.utils.torch_utils import apply_freeu
 from torchvision import transforms as T
-
 from lib import (AlphaOptions, choose_alpha_mask, generate_mask, push_key_value)
 
 
@@ -34,6 +33,7 @@ def ca_forward(self, mask_options: AlphaOptions):
         prev_t_attns: Optional[Dict] = None,
         attn_bias: Optional[Dict] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
+        indices: Optional[List[int]] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         default_overall_up_factor = 2**self.num_upsamplers
@@ -41,6 +41,8 @@ def ca_forward(self, mask_options: AlphaOptions):
         # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
         forward_upsample_size = False
         upsample_size = None
+
+        #print('down_block_additional_residuals:', down_block_additional_residuals.shape)
 
         for dim in sample.shape[-2:]:
             if dim % default_overall_up_factor != 0:
@@ -233,13 +235,16 @@ def ca_forward(self, mask_options: AlphaOptions):
             is_adapter = True
 
         down_block_res_samples = (sample,)
+        
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 # For t2i-adapter CrossAttnDownBlock2D
                 additional_residuals = {}
                 if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                    #print('entering additional_residuals')
                     additional_residuals["additional_residuals"] = down_intrablock_additional_residuals.pop(0)
-
+                
+                #print('sample_',i,':', sample.shape)
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -250,6 +255,8 @@ def ca_forward(self, mask_options: AlphaOptions):
                     **additional_residuals,
                 )
             else:
+                #print('Not attention')
+                #print('sample_',i,':', sample.shape)
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
                 if is_adapter and len(down_intrablock_additional_residuals) > 0:
                     sample += down_intrablock_additional_residuals.pop(0)
@@ -261,9 +268,12 @@ def ca_forward(self, mask_options: AlphaOptions):
             new_down_block_res_samples = ()
             for down_block_res_sample, down_block_additional_residual in zip(
                 down_block_res_samples, down_block_additional_residuals
-            ):
+            ):  
+                # print('down_block_res_sample shape:', down_block_res_sample.shape)
+                # print('down_block_additional_residual shape:', down_block_additional_residual.shape)
                 # down_block_res_sample = down_block_res_sample + down_block_additional_residual
                 down_block_res_sample = torch.concat((down_block_res_sample, down_block_additional_residual), dim=1)
+                #print('concatenated_residual shape:', down_block_res_sample.shape)
                 new_down_block_res_samples = new_down_block_res_samples + (down_block_res_sample,)
 
             down_block_res_samples = new_down_block_res_samples
@@ -276,6 +286,8 @@ def ca_forward(self, mask_options: AlphaOptions):
                 if attn_bias is not None:
                     mid_block_CA_kwargs["attn_bias"] = attn_bias["mid_block.attentions"][0]
                 ############################################
+                #print('mid attention')
+                #print('sample_',i,':', sample.shape)
                 sample = self.mid_block(
                     sample,
                     emb,
@@ -285,6 +297,7 @@ def ca_forward(self, mask_options: AlphaOptions):
                     encoder_attention_mask=encoder_attention_mask,
                 )
             else:
+                #print('sample_branch2',i,':', sample.shape)
                 sample = self.mid_block(sample, emb)
 
             # To support T2I-Adapter-XL
@@ -320,7 +333,8 @@ def ca_forward(self, mask_options: AlphaOptions):
             # print(c)
 
             # orig_sample = sample
-            sample = sample + c * mid_block_additional_residual
+            if not (indices and 0 in indices):
+                sample = sample + c * mid_block_additional_residual
 
             if hasattr(self.mid_block, "store_alpha_mask"):
                 self.mid_block.alpha_mask = c
@@ -363,10 +377,14 @@ def ca_forward(self, mask_options: AlphaOptions):
                     up_block_CA_kwargs["attn_biases"] = attn_bias[f"up_blocks.{i}"]
                 ############################################
 
+                mapping = {1: 4, 2: 7, 3: 10}
+                id = mapping.get(i)
+
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
+                    id=id,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=up_block_CA_kwargs,
                     upsample_size=upsample_size,
@@ -374,6 +392,7 @@ def ca_forward(self, mask_options: AlphaOptions):
                     encoder_attention_mask=encoder_attention_mask,
                     timestep=timestep,
                     attn_inferred_mask=attn_inferred_mask,
+                    indices=indices,
                     given_mask_options=given_mask_options
                 )
             else:
@@ -383,18 +402,23 @@ def ca_forward(self, mask_options: AlphaOptions):
                     if timestep.item() in self.alphas.keys():
                         attn_inferred_mask *= self.alphas[timestep.item()]
 
+                #print('sample_branch2_upblock',i,':', sample.shape)
+                id = 1       
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
+                    id=id,
                     upsample_size=upsample_size,
                     scale=lora_scale,
                     timestep=timestep,
                     attn_inferred_mask=attn_inferred_mask,
+                    indices=indices,
                     given_mask_options=given_mask_options,
                     **added_cond_kwargs
                 )
-
+                
+        #print('sample_branch2',i,':', sample.shape)
         # 6. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
@@ -416,11 +440,13 @@ def upblock2d_forward(self):
     def forward(
         hidden_states: torch.FloatTensor,
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
+        id: Optional[int] = None,
         temb: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
         scale: float = 1.0,
         timestep: Optional[torch.Tensor] = None,
         attn_inferred_mask: Optional[torch.Tensor] = None,
+        indices: Optional[List[int]] = None,
         given_mask_options: AlphaOptions = {}
     ) -> torch.FloatTensor:
         is_freeu_enabled = (
@@ -429,10 +455,13 @@ def upblock2d_forward(self):
             and getattr(self, "b1", None)
             and getattr(self, "b2", None)
         )
+        count=0
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
+            #print('resnet',':', res_hidden_states.shape)
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+            
 
             # FreeU: Only operate on the first two stages
             if is_freeu_enabled:
@@ -445,6 +474,7 @@ def upblock2d_forward(self):
                     b1=self.b1,
                     b2=self.b2,
                 )
+                #print('FreeU applied')
 
             c_half = res_hidden_states.shape[1]//2
             ############################################# CONTROL ###############################################
@@ -461,8 +491,17 @@ def upblock2d_forward(self):
                 use_fixed_mask=given_mask_options["fixed"],
                 bsz=hidden_states.shape[0]
             )
-            res_hidden_states  = res_hidden_states[:,:c_half] + c * res_hidden_states[:,c_half:]
+            #print('C_NETres_hidden_states before_shape:',res_hidden_states.shape)
+            # res_hidden_states  = res_hidden_states[:,:c_half] + c * res_hidden_states[:,c_half:]
+            if indices and (id+count in indices): 
+                res_hidden_states  = res_hidden_states[:,:c_half] 
+            else:
+                res_hidden_states = res_hidden_states[:,:c_half] + c * res_hidden_states[:,c_half:]
+            count+=1
+            #print('CNET_hidden_states shape:', hidden_states.shape)
+            #print('C_NETres_hidden_states shape:', res_hidden_states.shape)
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+            #print('Final_CNET_hidden_states shape:', hidden_states.shape)
             ######################### . ALPHA MAP  ###########################
             if hasattr(self, "store_alpha_mask"):
                 self.alpha_mask = c
@@ -486,6 +525,7 @@ def upblock2d_forward(self):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
+                #print('upblock_resnet',':', hidden_states.shape)
                 hidden_states = resnet(hidden_states, temb, scale=scale)
 
         if self.upsamplers is not None:
@@ -501,6 +541,7 @@ def crossattnupblock2d_forward(self):
     def forward(
         hidden_states: torch.FloatTensor,
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
+        id: Optional[int] = None,
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -509,6 +550,7 @@ def crossattnupblock2d_forward(self):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         timestep: Optional[torch.Tensor] = None,
         attn_inferred_mask: Optional[torch.Tensor] = None,
+        indices: Optional[List[int]] = None,
         given_mask_options: AlphaOptions = {}
     ) -> torch.FloatTensor:
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
@@ -551,8 +593,17 @@ def crossattnupblock2d_forward(self):
                 bsz=hidden_states.shape[0]
             )
 
-            res_hidden_states  = res_hidden_states[:,:c_half] + c * res_hidden_states[:,c_half:]
+
+            if indices and (id+i in indices):
+                    res_hidden_states = res_hidden_states[:,:c_half]
+            else:
+                res_hidden_states = res_hidden_states[:,:c_half] + c * res_hidden_states[:,c_half:]
+
+            #ControlNet injection
+            #print('CNET_hidden_states shape:', hidden_states.shape)
+            #print('C_NETres_hidden_states shape:', res_hidden_states.shape)
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+            #print('Final_CNET_hidden_states shape:', hidden_states.shape)
             ######################### . ALPHA MAP  ###########################
             if hasattr(self, "store_alpha_mask"):
                 self.alpha_mask = c
@@ -587,13 +638,15 @@ def crossattnupblock2d_forward(self):
                     return_dict=False,
                 )[0]
             else:
+                #print('upblock_resnet',i,':', hidden_states.shape)
                 hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
                 ############################################################
                 if "attn_biases" in cross_attention_kwargs:
                     cross_attention_kwargs = push_key_value(cross_attention_kwargs, "attn_bias", cross_attention_kwargs["attn_biases"][i])
                 ############################################################
-
+                
+               # print('upblock_attention',i,':', hidden_states.shape)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,

@@ -71,6 +71,8 @@ def attn_call(
 
 		residual = hidden_states
 
+		#print('Entering Attention1:', hidden_states.shape)
+
 		if attn.spatial_norm is not None:
 			hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -127,7 +129,7 @@ def attn_call(
 		hidden_states = hidden_states / attn.rescale_output_factor
 
 		return hidden_states
-
+ 
 def attn_call2_0(
 	self,
 	attn: Attention,
@@ -150,6 +152,9 @@ def attn_call2_0(
 		hidden_states = attn.spatial_norm(hidden_states, temb)
 
 	input_ndim = hidden_states.ndim
+
+	# print('hidden_states shape:', hidden_states.shape)
+	#print('Entering Attention2', hidden_states.shape)
 
 	if input_ndim == 4:
 		batch_size, channel, height, width = hidden_states.shape
@@ -206,12 +211,14 @@ def attn_call2_0(
 			preserve_range = kwargs["attn_preserve_range"]
 			self.attn_bias = attention_probs[:, :, :, preserve_range[0]:preserve_range[-1] + 1].mean(axis = -1)		# batch attn_head (h w)
 
-
 		if "token_last_idx" in kwargs:
 			""" re-weight the attention values by ignoring the attention of ⟨𝑠𝑜𝑡⟩ and <eot> """
 			attention_probs = attention_probs[:, :, :, 1:kwargs["token_last_idx"]]
 			attention_probs *= 1000
 			attention_probs = torch.nn.functional.softmax(attention_probs, dim=-1)
+		
+		# print('attn_probs:',attention_probs.shape)
+		# print('height:',height)
 
 		attention_probs = rearrange(attention_probs, 'batch attn_head (h w) attn_dim -> batch attn_head h w attn_dim ', h=height) # detach height*width
 		self.attn_map = attention_probs

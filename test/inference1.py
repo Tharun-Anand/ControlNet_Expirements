@@ -1,15 +1,14 @@
 import os
-from typing import List, TypedDict, Optional
+from typing import List, TypedDict
 
 import torch
 from controlnet_aux import CannyDetector, OpenposeDetector, ZoeDetector
-from diffusers import AutoencoderKL, ControlNetModel, UniPCMultistepScheduler, StableDiffusionControlNetPipeline
+from diffusers import AutoencoderKL, ControlNetModel, UniPCMultistepScheduler
 from PIL import Image
 from pytorch_lightning import seed_everything
 
 from lib import (assert_path, image_grid, init_store_attn_map,
                  save_alpha_masks, save_attention_maps)
-# from lib.attention_map import init_controlnet_attn_maps
 from src import SemanticControlPipeline, register_unet
 
 from .types import ModelType
@@ -45,34 +44,16 @@ class EvalModel():
 		vae = AutoencoderKL.from_pretrained(self.vae_model_path).to(dtype=torch.float16)
 		controlnet = ControlNetModel.from_pretrained(self.controlnet_path, torch_dtype=torch.float16)
 
-		pipe =	  SemanticControlPipeline.from_pretrained(
+		pipe =	SemanticControlPipeline.from_pretrained(
 				pretrained_model_name_or_path=self.base_model_path,
 				controlnet=controlnet,
 				vae=vae,
 	   		torch_dtype=torch.float16
 		)
-
-		# pipe1 =  SemanticControlPipeline.from_pretrained(
-		# 		pretrained_model_name_or_path=self.base_model_path,
-		# 		controlnet=controlnet,
-		# 		vae=vae,
-	   	# 	torch_dtype=torch.float16
-		# )
-
-		# pipe1.scheduler = UniPCMultistepScheduler.from_config(pipe1.scheduler.config)
-		# pipe1.enable_model_cpu_offload()
-		# self.pipe1 = pipe1
-
 		pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 		pipe.enable_model_cpu_offload()
 
-		
-
 		self.pipe = pipe
-		
-		# Initialize ControlNet attention maps (NEW!)
-		# self.controlnet_hook = init_controlnet_attn_maps(self.pipe.controlnet)
-		# print('hook:',self.controlnet_hook)
 
 	def _prepare_control(self, reference: str):
 		image = Image.open(reference)
@@ -119,7 +100,7 @@ class EvalModel():
 
 		return os.path.exists(filename)
 
-	def inference_ControlNet(self, prompt: str, reference: str, ref_subj: str, prmpt_subj: str, seed: int, alpha_mask: List[float] = [1.0], indices: Optional[List[int]] = None, **kwargs):
+	def inference_ControlNet(self, prompt: str, reference: str, ref_subj: str, prmpt_subj: str, seed: int, alpha_mask: List[float] = [1.0], **kwargs):
 		if self._is_already_generated(ref_subj, prmpt_subj, prompt, seed, alpha_mask):
 			print(f"{self.filename} is already generated. Skipping.")
 			return None
@@ -130,36 +111,19 @@ class EvalModel():
 			"ignore_special_tkns": True
 		}
 		self.pipe.options = pipe_options
-		
-        
+
 		init_store_attn_map(self.pipe)
 		register_unet(self.pipe, mask_options={
 			"alpha_mask": alpha_mask,
 			"fixed": True
 		})
 
-		save_attn = False
-		if save_attn:
-			save_attention_maps(
-				self.pipe.unet.attn_maps,
-				self.pipe.tokenizer,
-				base_dir=f"{os.getcwd()}/log/attn_maps/{self.modelType.name}/{prompt}/{prompt}",
-				prompts=[prompt],
-				options={
-					"prefix": "",
-					"return_dict": False,
-					"ignore_special_tkns": True,
-					"enabled_editing_prompts": 0
-			})
-
 		self._record_generate_params(seed=seed, prompt=prompt, ignore_special_tkns=True)
-
 
 		seed_everything(seed)
 		output = self.pipe(
 			prompt=prompt,
-			image=control_img,
-			indices=indices,
+			image=control_img
 		).images[0]
 
 		return output
@@ -202,7 +166,6 @@ class EvalModel():
 		assert_path(self.save_dir)
 		spatial_sample.save(self.save_dir + "/spatial_sample.png")
 
-		save_attn = False
 		if save_attn:
 			save_attention_maps(
 				self.pipe.unet.attn_maps,
@@ -234,8 +197,7 @@ class EvalModel():
 			prepare_phase=False,
 			use_attn_bias=use_attn_bias
 		).images[0]
-        
-		save_attn = True
+
 		if save_attn:
 			save_alpha_masks(self.pipe.unet.alpha_masks, f'{os.getcwd()}/log/alpha_masks/{self.modelType.name}/{prompt}')
 
@@ -243,59 +205,8 @@ class EvalModel():
 
 	def postprocess(self, image, save_attn: bool = False):
 		if image is None:
-			return 
-	    
-		save_attn = True
-		if save_attn:
-			# Save UNet attention maps (existing)
-			for timestep in sorted(self.pipe.unet.attn_maps.keys()):
-				# print(timestep)
-				#print('prompt:',self.generate_param['prompt'])
-				save_attention_maps(
-					{timestep: self.pipe.unet.attn_maps[timestep]},
-					self.pipe.tokenizer,
-					base_dir=f"{os.getcwd()}/lognew_exp1/attn_maps/{self.modelType.name}/{self.generate_param['prompt']}/unet",
-					prompts=[self.generate_param["prompt"]],
-					options={
-						"prefix": f"t{timestep}_",
-						"return_dict": False,
-						"ignore_special_tkns": self.generate_param["ignore_special_tkns"],
-						"enabled_editing_prompts": 0
-					}
-				)
+			return
 
-				save_attention_maps(
-					{timestep: self.pipe.controlnet.attn_maps[timestep]},
-					self.pipe.tokenizer,
-					base_dir=f"{os.getcwd()}/logctrlnet_exp1/attn_maps/{self.modelType.name}/{self.generate_param['prompt']}/unet",
-					prompts=[self.generate_param["prompt"]],
-					options={
-						"prefix": f"t{timestep}_",
-						"return_dict": False,
-						"ignore_special_tkns": self.generate_param["ignore_special_tkns"],
-						"enabled_editing_prompts": 0
-					}
-				)
-			
-			# Save ControlNet attention maps (NEW - enabled!)
-			# print('attn_maps:',self.controlnet_hook.attention_maps)
-			# print()
-			# if hasattr(self.controlnet_hook, 'attention_maps') and self.controlnet_hook.attention_maps:
-			# 	print('entering1')
-			# 	for timestep in sorted(self.controlnet_hook.attention_maps.keys()):
-			# 		save_attention_maps(
-			# 			{timestep: self.controlnet_hook.attention_maps[timestep]},
-			# 			self.pipe.tokenizer,
-			# 			base_dir=f"{os.getcwd()}/logctrlnet/attn_maps_controlnet/{self.modelType.name}/{self.generate_param['prompt']}/controlnet",
-			# 			prompts=[self.generate_param["prompt"]],
-			# 			options={
-			# 				"prefix": f"t{timestep}_",
-			# 				"return_dict": False,
-			# 				"ignore_special_tkns": self.generate_param["ignore_special_tkns"],
-			# 				"enabled_editing_prompts": 0
-			# 			}
-			# 		)
-		
 		assert_path(self.save_dir)
 		image.resize((512, 512)).save(self.filename)
 		self.control_img.resize((512, 512)).save(f"{self.save_dir}/{self.control} condition.png")
@@ -306,17 +217,17 @@ class EvalModel():
 		   ], 1, 3)
 		comparison.save(f"{self.save_dir}/{self.control} control result - seed {self.generate_param['seed']}.png")
 
-		# if save_attn:
-		# 	save_attention_maps(
-		# 	self.pipe.unet.attn_maps,
-		# 	self.pipe.tokenizer,
-		# 	base_dir=f"{os.getcwd()}/log/attn_maps/{self.modelType.name}/{self.generate_param['prompt']}",
-		# 	prompts=[self.generate_param["prompt"]],
-		# 	options={
-		# 		"prefix": "",
-		# 		"return_dict": False,
-		# 		"ignore_special_tkns": self.generate_param["ignore_special_tkns"],
-		# 		"enabled_editing_prompts": 0
-		# 	})
+		if save_attn:
+			save_attention_maps(
+			self.pipe.unet.attn_maps,
+			self.pipe.tokenizer,
+			base_dir=f"{os.getcwd()}/log/attn_maps/{self.modelType.name}/{self.generate_param['prompt']}",
+			prompts=[self.generate_param["prompt"]],
+			options={
+				"prefix": "",
+				"return_dict": False,
+				"ignore_special_tkns": self.generate_param["ignore_special_tkns"],
+				"enabled_editing_prompts": 0
+			})
 
 		print(f"Saved results for {self.filename}")

@@ -66,6 +66,8 @@ def tokenize_and_mark_prompts(prompts: List[str], tokenizer: CLIPTokenizer, igno
 def save_attention_maps(attn_maps, tokenizer, prompts, base_dir='log/attn_maps', unconditional=True, options: AttnSaveOptions = default_option):
 	to_pil = ToPILImage()
 
+	print("Saving attention maps...")
+
 	bsz = options["enabled_editing_prompts"] + int(unconditional) + 1
 	total_marked_tokens = tokenize_and_mark_prompts(prompts=prompts, tokenizer=tokenizer, ignore_special_tokens=options["ignore_special_tkns"])
 	organized_attn_maps = {}
@@ -86,9 +88,14 @@ def save_attention_maps(attn_maps, tokenizer, prompts, base_dir='log/attn_maps',
 		assert_path(timestep_dir)
 
 		for layer, attn_map in layers.items():
+			
 			layer_dir = os.path.join(timestep_dir, f'{layer}')
+			if attn_map.shape[-1] == 77:
+				attn_map = attn_map[:,:,:,:,1:len(total_marked_tokens[0])+1]
+			# print('attn_map', attn_map.shape)
 			assert_path(layer_dir)
 
+	
 			attn_map = attn_map.sum(1) / attn_map.shape[1]
 			attn_map = attn_map.permute(0, 3, 1, 2)
 

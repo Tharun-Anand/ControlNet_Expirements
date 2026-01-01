@@ -1,6 +1,5 @@
 from itertools import repeat
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -151,6 +150,7 @@ class SemanticControlPipeline(StableDiffusionControlNetPipeline):
 		control_guidance_end: Union[float, List[float]] = 1.0,
 		clip_skip: Optional[int] = None,
 		callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+		indices: Optional[List[int]] = None,
 		callback_on_step_end_tensor_inputs: List[str] = ["latents"],
 
 		use_attn_bias: bool = False,
@@ -483,6 +483,7 @@ class SemanticControlPipeline(StableDiffusionControlNetPipeline):
 					cross_attention_kwargs=self.cross_attention_kwargs,
 					return_dict=False,
 				)
+				# print('cond_scale:', cond_scale)
 
 				prev_t_attns = None
 				if focus_prompt is not None and IS_PREPARE_PHASE is False:
@@ -504,6 +505,7 @@ class SemanticControlPipeline(StableDiffusionControlNetPipeline):
 
 					if cross_attention_kwargs is None:
 						cross_attention_kwargs = {'token_last_idx': last_idx}
+						print('None')
 					else:
 						cross_attention_kwargs['token_last_idx'] = last_idx
 
@@ -531,15 +533,19 @@ class SemanticControlPipeline(StableDiffusionControlNetPipeline):
 					# inferred_masks=inferred_masks,
 					prev_t_attns=prev_t_attns,
 					attn_bias=attn_bias,
+					indices=indices,
 					added_cond_kwargs=added_cond_kwargs,
 					return_dict=False,
 				)[0]
 
 				# perform guidance
 				if self.do_classifier_free_guidance:
+					# print('Entering')
+					# print('scale:', self.guidance_scale)
 					noise_pred_uncond, noise_pred_text, *noise_pred_edit_concepts = noise_pred.chunk(latent_dup_num)
 					noise_pred_edit_concepts = None if len(noise_pred_edit_concepts) == 0 else torch.cat(noise_pred_edit_concepts)
 					noise_guidance = self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+					# noise_guidance = noise_pred_text - noise_pred_uncond
 					noise_pred = noise_pred_uncond + noise_guidance
 
 				# compute the previous noisy sample x_t -> x_t-1
