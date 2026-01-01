@@ -31,6 +31,7 @@ INDEX_EXPERIMENTS = [
     [0],
     [1],
     [2],
+    [3],
     # add more here
 ]
 
