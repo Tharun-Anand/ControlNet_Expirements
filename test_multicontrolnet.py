@@ -104,7 +104,7 @@ def main():
     # --- CONFIGURATION ---
     # Define the controls you want to use together
     # Options: "sketch", "pose", "depth", "canny"
-    my_controls = ["canny", "pose"]
+    my_controls = ["canny", "pose","depth"]
 
     # Define the reference images corresponding to those controls
     # Ensure these paths are correct on your system!
