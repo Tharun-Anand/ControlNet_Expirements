@@ -45,6 +45,10 @@ class EvalModel():
 		vae = AutoencoderKL.from_pretrained(self.vae_model_path).to(dtype=torch.float16)
 		controlnet = ControlNetModel.from_pretrained(self.controlnet_path, torch_dtype=torch.float16)
 
+		# 2. Load the ControlNet Models
+		# We load them as a list. The order here determines the order of input images later.
+		print("Loading ControlNets...")
+
 		pipe =	  SemanticControlPipeline.from_pretrained(
 				pretrained_model_name_or_path=self.base_model_path,
 				controlnet=controlnet,
@@ -156,6 +160,8 @@ class EvalModel():
 
 
 		seed_everything(seed)
+		print('indices:',indices)
+
 		output = self.pipe(
 			prompt=prompt,
 			image=control_img,
@@ -245,7 +251,7 @@ class EvalModel():
 		if image is None:
 			return 
 	    
-		save_attn = True
+		save_attn = False
 		if save_attn:
 			# Save UNet attention maps (existing)
 			for timestep in sorted(self.pipe.unet.attn_maps.keys()):

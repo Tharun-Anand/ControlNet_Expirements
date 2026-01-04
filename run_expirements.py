@@ -32,6 +32,15 @@ INDEX_EXPERIMENTS = [
     [1],
     [2],
     [3],
+    [4],
+    [5],
+    [6],
+    [7],
+    [8],
+    [9],
+    [10],
+    [11],
+    [12],
     # add more here
 ]
 
@@ -40,46 +49,101 @@ INDEX_EXPERIMENTS = [
 # Prompt configurations
 # =====================================
 PROMPTS = {
-    "girl_with_purse": {
-        "prompt": "a girl holding a purse in anime style",
-        "reference": "/scratch/work/muralit1/Controlnet/SemanticControl/assets/hulk.png",
-        "ref_subj": "a hulk",
-        "prmpt_subj": "a girl",
-        "seed": 30,
+    # "girl_with_purse": {
+    #     "prompt": "a girl holding a purse in anime style",
+    #     "reference": "/scratch/work/muralit1/Controlnet/SemanticControl/assets/hulk.png",
+    #     "ref_subj": "a man",
+    #     "prmpt_subj": "a girl",
+    #     "seed": 15,
+    #     "alpha_mask": [1.0],
+    #     "mask_prompt": "A man holding a purse",
+    #     "focus_tokens": "holding a purse",
+    #     "save_attn": True,
+    #     "use_attn_bias": True,
+    #     "control_type": "depth",
+    # },
+
+     "cat_riding_bicycle": {
+        "prompt": "a cat riding a bike",
+        "reference": "/scratch/work/muralit1/Controlnet/SemanticControl/assets/test/a woman is riding a bike.jpg",
+        "ref_subj": "a woman",
+        "prmpt_subj": "a cat",
+        "seed": 14,
         "alpha_mask": [1.0],
-        "mask_prompt": "A hulk holding a purse",
-        "focus_tokens": "holding a purse",
+        "mask_prompt": "a woman riding a bike",
+        "focus_tokens": "riding a bike",
+        "save_attn": True,
+        "use_attn_bias": True,
+        "control_type": "depth",
+    },
+     "cat_riding_bicycle": {
+        "prompt": "a cat riding a bike",
+        "reference": "/scratch/work/muralit1/Controlnet/SemanticControl/assets/test/a woman is riding a bike.jpg",
+        "ref_subj": "a woman",
+        "prmpt_subj": "a cat",
+        "seed": 15,
+        "alpha_mask": [1.0],
+        "mask_prompt": "a woman riding a bike",
+        "focus_tokens": "riding a bike",
         "save_attn": True,
         "use_attn_bias": True,
         "control_type": "depth",
     },
 
-    "cat_holding_guitar": {
-        "prompt": "a cat holding a guitar",
-        "reference": "/scratch/work/muralit1/Controlnet/SemanticControl/assets/test/a man is holding the guitar.jpg",
-        "ref_subj": "a man",
-        "prmpt_subj": "a cat",
-        "seed": 42,
+     "dog_plushie_riding_bicycle": {
+        "prompt": "a dog plushie riding a bike",
+        "reference": "/scratch/work/muralit1/Controlnet/SemanticControl/assets/test/a woman is riding a bike.jpg",
+        "ref_subj": "a woman",
+        "prmpt_subj": "a dog plushie",
+        "seed": 14,
         "alpha_mask": [1.0],
-        "mask_prompt": "A man holding a guitar",
-        "focus_tokens": "holding a guitar",
-        "save_attn": True,
-        "use_attn_bias": True,
-        "control_type": "pose",
-    },
-    "boy_with_sword": {
-        "prompt": "a cat holding a sword",
-        "reference": "/scratch/work/muralit1/Controlnet/SemanticControl/assets/test/a man is holding a sword.jpg",
-        "ref_subj": "a man",
-        "prmpt_subj": "a cat",
-        "seed": 87,
-        "alpha_mask": [1.0],
-        "mask_prompt": "A man holding a sword",
-        "focus_tokens": "holding a sword",
+        "mask_prompt": "a woman riding a bike",
+        "focus_tokens": "riding a bike",
         "save_attn": True,
         "use_attn_bias": True,
         "control_type": "depth",
     },
+
+    "dog_plushie_riding_bicycle": {
+        "prompt": "a dog plushie riding a bike",
+        "reference": "/scratch/work/muralit1/Controlnet/SemanticControl/assets/test/a woman is riding a bike.jpg",
+        "ref_subj": "a woman",
+        "prmpt_subj": "a dog plushie",
+        "seed": 15,
+        "alpha_mask": [1.0],
+        "mask_prompt": "a woman riding a bike",
+        "focus_tokens": "riding a bike",
+        "save_attn": True,
+        "use_attn_bias": True,
+        "control_type": "depth",
+    },
+
+    # "dog_plushie_holding_guitar": {
+    #     "prompt": "a dog plushie holding a guitar",
+    #     "reference": "/scratch/work/muralit1/Controlnet/SemanticControl/assets/test/a man is holding the guitar.jpg",
+    #     "ref_subj": "a man",
+    #     "prmpt_subj": "a dog plushie",
+    #     "seed": 15,
+    #     "alpha_mask": [1.0],
+    #     "mask_prompt": "A man holding a guitar",
+    #     "focus_tokens": "holding a guitar",
+    #     "save_attn": True,
+    #     "use_attn_bias": True,
+    #     "control_type": "depth",
+    # },
+    # "boy_with_sword": {
+    #     "prompt": "a cat holding a sword",
+    #     "reference": "/scratch/work/muralit1/Controlnet/SemanticControl/assets/test/a man is holding a sword.jpg",
+    #     "ref_subj": "a man",
+    #     "prmpt_subj": "a cat",
+    #     "seed": 14,
+    #     "alpha_mask": [1.0],
+    #     "mask_prompt": "A man holding a sword",
+    #     "focus_tokens": "holding a sword",
+    #     "save_attn": True,
+    #     "use_attn_bias": True,
+    #     "control_type": "depth",
+    # },
 }
 
 
@@ -101,6 +165,7 @@ def run_ablation_study():
     for indices in INDEX_EXPERIMENTS:
         exp_name = index_exp_name(indices)
         exp_path = os.path.join(ABLATION_ROOT, exp_name)
+        # exp_path = os.path.join(ABLATION_ROOT, "no_change")
 
         print(f"\n🧪 Index Experiment: {exp_name}")
         print(f"📁 Log path: {exp_path}")
